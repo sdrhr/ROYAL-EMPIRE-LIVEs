@@ -22,18 +22,48 @@ const supportRoutes = require('./routes/support');
 
 const app = express();
 const server = http.createServer(app);
-const io = new Server(server, { cors: { origin: '*' } });
 
-app.use(cors());
+// ------------------- CORS FIX --------------------
+
+const allowedOrigins = [
+  "https://royalempireliveapp.netlify.app",
+  "http://localhost:3000"
+];
+
+app.use(cors({
+  origin: function (origin, callback) {
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.includes(origin)) return callback(null, true);
+    return callback(new Error("CORS blocked"));
+  },
+  credentials: true,
+  methods: ["GET", "POST", "PUT", "DELETE"],
+  allowedHeaders: ["Content-Type", "Authorization"]
+}));
+
 app.use(express.json());
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
-// Connect MongoDB
-mongoose.connect(process.env.MONGO_URI, { useNewUrlParser:true, useUnifiedTopology:true })
-  .then(() => console.log("MongoDB connected"))
-  .catch(err => console.log(err));
+// ---------------- SOCKET.IO FIX ------------------
 
-// Routes
+const io = new Server(server, {
+  cors: {
+    origin: allowedOrigins,
+    methods: ["GET", "POST"]
+  }
+});
+
+// ------------------- DATABASE ---------------------
+
+mongoose.connect(process.env.MONGO_URI, { 
+  useNewUrlParser: true, 
+  useUnifiedTopology: true 
+})
+.then(() => console.log("MongoDB connected"))
+.catch(err => console.log(err));
+
+// -------------------- ROUTES ---------------------
+
 app.use('/api/auth', authRoutes);
 app.use('/api/user/dashboard', dashboardRoutes);
 app.use('/api/user/deposit', depositRoutes);
@@ -43,9 +73,10 @@ app.use('/api/user/referrals', referralRoutes);
 app.use('/api/user/profile', profileRoutes);
 app.use('/api/support', supportRoutes);
 
-// Socket.io real-time updates
+// ---------------- SOCKET EVENTS ------------------
+
 io.on('connection', socket => {
-  console.log('New socket connected');
+  console.log('New socket connected:', socket.id);
 
   socket.on('subscribeBalance', userId => {
     socket.join(userId);
@@ -53,6 +84,8 @@ io.on('connection', socket => {
 
   socket.on('disconnect', () => console.log('Socket disconnected'));
 });
+
+// -------------------- START SERVER ---------------------
 
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
